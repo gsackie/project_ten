@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">project_ten</string>
+    <string name="title_activity_gesture">GestureActivity</string>
 </resources>

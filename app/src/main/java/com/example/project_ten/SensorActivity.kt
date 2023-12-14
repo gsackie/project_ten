@@ -5,14 +5,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.project_ten.ui.theme.Project_tenTheme
@@ -28,9 +24,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
 
 
 class SensorActivity : ComponentActivity() {
@@ -44,9 +42,11 @@ class SensorActivity : ComponentActivity() {
 
 @Composable
 fun SensorActivityContent() {
+    val navController = rememberNavController()
     var temperature by remember { mutableStateOf("") }
     var airPressure by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
+    var gyroscopeValues by remember { mutableStateOf("") }
 
     val sensorManager = LocalContext.current.getSystemService(SENSOR_SERVICE) as SensorManager
 
@@ -57,14 +57,20 @@ fun SensorActivityContent() {
     val pressureSensorType = Sensor.TYPE_PRESSURE
     val pressureSensor = sensorManager.getDefaultSensor(pressureSensorType)
 
+    val gyroscopeSensorType = Sensor.TYPE_GYROSCOPE
+    val gyroscopeSensor = sensorManager.getDefaultSensor(gyroscopeSensorType)
+
     var temperatureSensorEventListener: SensorEventListener? = null
     var pressureSensorEventListener: SensorEventListener? = null
+    var gyroscopeSensorEventListener: SensorEventListener? = null
+
 
     DisposableEffect(Unit) {
         // Temperature Sensor
         temperatureSensorEventListener = object : SensorEventListener {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-                // Handling accuracy changes if needed
+                // Handle accuracy changes if needed
+
 
             }
 
@@ -88,6 +94,19 @@ fun SensorActivityContent() {
             }
         }
 
+        // Gyroscope Sensor
+        gyroscopeSensorEventListener = object : SensorEventListener {
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                // Handle accuracy changes if needed
+            }
+
+            override fun onSensorChanged(event: SensorEvent?) {
+                event?.let {
+                    gyroscopeValues = it.values[0].toString() + " " + it.values[1].toString() + " " + it.values[2].toString()
+                }
+            }
+        }
+
         // Register listeners
         sensorManager.registerListener(
             temperatureSensorEventListener,
@@ -97,6 +116,11 @@ fun SensorActivityContent() {
         sensorManager.registerListener(
             pressureSensorEventListener,
             pressureSensor,
+            SensorManager.SENSOR_DELAY_NORMAL
+        )
+        sensorManager.registerListener(
+            gyroscopeSensorEventListener,
+            gyroscopeSensor,
             SensorManager.SENSOR_DELAY_NORMAL
         )
 
@@ -109,6 +133,10 @@ fun SensorActivityContent() {
             pressureSensorEventListener?.let {
                 sensorManager.unregisterListener(it)
             }
+
+            gyroscopeSensorEventListener?.let {
+                sensorManager.unregisterListener(it)
+            }
         }
     }
 
@@ -116,7 +144,7 @@ fun SensorActivityContent() {
         // Get location using Geocoder
         val geocoder = Geocoder(LocalContext.current)
         val addresses: List<Address>? = withContext(Dispatchers.IO) {
-            geocoder.getFromLocation(39.1651903,-86.5257804017032,1)
+            geocoder.getFromLocation(39.1651903, -86.5257804017032, 1)
         }
 
         addresses?.let {
@@ -132,7 +160,7 @@ fun SensorActivityContent() {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text(text = "Your Name: Your Name Here")
+        Text(text = "George Sackie")
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = "Your Location: $location")
         Spacer(modifier = Modifier.height(8.dp))
@@ -140,31 +168,54 @@ fun SensorActivityContent() {
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = "Air Pressure: $airPressure")
         Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Gyroscope Values: $gyroscopeValues")
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Add a button to navigate to Gesture Activity on fling
-        var offsetX by remember { mutableStateOf(0f) }
+        FlingButton(navController = NavController( LocalContext.current)) {
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset(offsetX.roundToInt(), 0) }
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, panGesture ->
-                        offsetX += panGesture.offset.x
+        }
 
-                        if (panGesture.velocity.x > 8000) {
-                            nav controller . navigate ("gesture")
-
-                        }
-                    }
-                }
-        ) {
-            Button(onClick = { /* Handling button click */ }) {
-                Text("Gesture Playground")
-            }
         }
     }
 }
+
+@Composable
+fun FlingButton(navController: NavController, onFling: () -> Unit) {
+    var offsetX by remember { mutableStateOf(0f) }
+    var flingDetected by remember { mutableStateOf(false) }
+
+    // Use LaunchedEffect to observe changes in flingDetected and trigger action on fling
+    LaunchedEffect(flingDetected) {
+        if (flingDetected) {
+            onFling()
+            // Navigate to GestureActivity using NavController
+            navController.navigate("gestureActivity")
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .offset { IntOffset(offsetX.roundToInt(), 0) }
+            .onGloballyPositioned { coordinates ->
+                // Manually detect fling based on button position
+                if (coordinates.globalPosition.x > 8000) {
+                    flingDetected = true
+                }
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, _, _ ->
+                    // Adjust the offsetX based on pan gesture
+                    offsetX += pan.x
+                }
+            }
+    ) {
+        Button(onClick = {}) {
+            Text("Gesture Playground")
+        }
+    }
+}
+
 
 @Preview(showBackground = true)
 @Composable
